@@ -5,7 +5,8 @@ use std::fmt;
 use std::fmt::{Formatter, Debug};
 
 trait Specimen: Sized {
-    fn evaluate(&self) -> f32;
+    fn score(&self) -> f32;
+    fn reevaluate(&mut self);
     fn mutate(generation: &mut[Self]);
     fn procrastinate(parents: &[Self]) -> Self;
     fn filter_strongest(species: &mut Vec<Self>);
@@ -22,7 +23,7 @@ fn genetic<S: Specimen>(threshold: f32, max_iters: usize, nparents: usize) -> S 
         species = next_gen(species, nparents);
         
         for (i, specimen) in species.iter().enumerate() {
-            let score = specimen.evaluate();
+            let score = specimen.score();
             if best.0 <= score {
                 best = (score, i)
             }
@@ -55,6 +56,9 @@ fn next_gen<S: Specimen>(mut species: Vec<S>, nparents: usize) -> Vec<S> {
     
     // 3. mutate
     S::mutate(&mut children);
+    for child in children.iter_mut() {
+        child.reevaluate();
+    }
     
     species.extend(children);
     
@@ -124,9 +128,7 @@ impl Board {
             cells[n*y + x] = true;
         }
         
-        let mut board = Board { score: 0f32, queens: queens, cells: cells };
-        board.reevaluate();
-        board
+        Board { score: 0f32, queens: queens, cells: cells }
     }
     
 //    fn n(&self) -> usize {
@@ -136,20 +138,6 @@ impl Board {
     fn at(&mut self, x: usize, y: usize) -> &mut bool {
 //        let n = self.n();
         &mut self.cells[SIZE * y + x]
-    }
-    
-    fn reevaluate(&mut self) {
-        let mut score: usize = 0;
-        let mut conflicts = vec![0; SIZE];
-        for i in 0 .. self.queens.len() {
-            self.eval_conflicts(i, &mut conflicts);
-            
-            if conflicts[i] == 0 {
-                score += 1;
-            }
-        }
-        
-        self.score = score as f32 + 0.000001;
     }
     
     fn do_mutate(&mut self, rng: &mut XorShiftRng) {
@@ -162,7 +150,7 @@ impl Board {
                 *self.at(oldx, oldy) = false;
                 *self.at(x, y) = true;
                 self.queens[q] = (x, y);
-                self.reevaluate();
+//                self.reevaluate();
                 break;
             }
         }
@@ -189,14 +177,27 @@ impl Board {
 }
 
 impl Specimen for Board {
+    fn reevaluate(&mut self) {
+        let mut score: usize = 0;
+        let mut conflicts = vec![0; SIZE];
+        for i in 0 .. self.queens.len() {
+            self.eval_conflicts(i, &mut conflicts);
+            
+            if conflicts[i] == 0 {
+                score += 1;
+            }
+        }
+        
+        self.score = score as f32 + 0.000001;
+    }
     
-    fn evaluate(&self) -> f32 {
+    fn score(&self) -> f32 {
         self.score
     }
     
-    fn mutate(generation: &mut [Self]) {
+    fn mutate(new_gen: &mut [Self]) {
         let mut rng = weak_rng();
-        for board in generation.iter_mut() {
+        for board in new_gen.iter_mut() {
             if rng.next_f32() < MUTATION_PROBABILITY {
                 board.do_mutate(&mut rng);
             }
@@ -227,7 +228,6 @@ impl Specimen for Board {
             }
         }
         
-        child.reevaluate();
         child
     }
     
@@ -244,7 +244,7 @@ impl Specimen for Board {
         let mut rng = weak_rng();
         let mut boards = Vec::with_capacity(POPULATION);
         
-        for i in 0..POPULATION {
+        for _ in 0..POPULATION {
             let mut board = Board::new(SIZE, vec![]);
     
             loop {
