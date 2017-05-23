@@ -49,39 +49,35 @@ fn next_gen<S: Specimen>(mut species: Vec<S>, nparents: usize, nchildren: usize)
     S::filter_strongest(&mut species);
     
     // 2. bear children
-    let mut all_children = vec![];
+    let mut children = vec![];
     for _ in 0..nchildren {
-        let families = partition(species, nparents);
-        species = vec![];
-        let mut children = vec![];
+        let families = partition(&mut species, nparents);
+        debug_assert!(species.is_empty());
         for family in families.into_iter() {
             if family.len() > 1 {
-                //            for _ in 0..nchildren {
                 let child = S::procrastinate(&family);
                 children.push(child);
-                //            }
             }
             species.extend(family)
         }
-    
-        // 3. mutate
-        S::mutate(&mut children);
-        for child in children.iter_mut() {
-            child.reevaluate();
-        }
-    
-        all_children.extend(children);
     }
     
+    // 3. mutate
+    S::mutate(&mut children);
+    for child in children.iter_mut() {
+        child.reevaluate();
+    }
+    
+    
     if KILL_PARENTS {
-        all_children
+        children
     } else {
-        species.extend(all_children);
+        species.extend(children);
         species
     }
 }
 
-fn partition<S: Specimen>(mut species: Vec<S>, nparents: usize) -> Vec<Vec<S>> {
+fn partition<S: Specimen>(species: &mut Vec<S>, nparents: usize) -> Vec<Vec<S>> {
     let mut families = vec![];
     let mut family = vec![];
     let mut j = 0;
@@ -153,14 +149,21 @@ fn partition<S: Specimen>(mut species: Vec<S>, nparents: usize) -> Vec<Vec<S>> {
 //const MAX_ITERS: usize = 5000;
 //const NPARENTS: usize = 2;
 //const NCHILDREN: usize = 320;
-
 const KILL_PARENTS: bool = true;
-const SIZE: usize = 100;
+const SIZE: usize = 50;
 const MUTATION_PROBABILITY: f32 = 1.0f32;
 const POPULATION: usize = 5;
 const MAX_ITERS: usize = 5000;
 const NPARENTS: usize = 2;
 const NCHILDREN: usize = 320;
+
+//const KILL_PARENTS: bool = true;
+//const SIZE: usize = 100;
+//const MUTATION_PROBABILITY: f32 = 1.0f32;
+//const POPULATION: usize = 5;
+//const MAX_ITERS: usize = 5000;
+//const NPARENTS: usize = 2;
+//const NCHILDREN: usize = 320;
 
 
 
