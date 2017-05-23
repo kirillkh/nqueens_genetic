@@ -13,8 +13,8 @@ use std::sync::Mutex;
 trait Specimen: Sized {
     fn score(&self) -> f32;
     fn reevaluate(&mut self);
-    fn mutate(generation: &mut[Self]);
-    fn procrastinate(parents: &[Self]) -> Self;
+    fn mutate(generation: &mut[Self], rng: &mut XorShiftRng);
+    fn procrastinate(parents: &[Self], rng: &mut XorShiftRng) -> Self;
     fn filter_strongest(species: &mut Vec<Self>);
     
     fn initial() -> Vec<Self>;
@@ -45,25 +45,23 @@ fn genetic<S: Specimen>(threshold: f32, max_iters: usize, nparents: usize, nchil
 
 #[inline(never)]
 fn next_gen<S: Specimen>(mut species: Vec<S>, nparents: usize, nchildren: usize) -> Vec<S> {
+    let mut rng = RNG.lock().unwrap();
+    
     // 1. filter strongest
     S::filter_strongest(&mut species);
     
     // 2. bear children
     let mut children = vec![];
+    let mut family = vec![];
     for _ in 0..nchildren {
-        let families = partition(&mut species, nparents);
-        debug_assert!(species.is_empty());
-        for family in families.into_iter() {
-            if family.len() > 1 {
-                let child = S::procrastinate(&family);
-                children.push(child);
-            }
-            species.extend(family)
-        }
+        make_family(&mut species, nparents, &mut family, &mut rng);
+        let child = S::procrastinate(&family, &mut rng);
+        children.push(child);
+        species.extend(family.drain(..));
     }
     
     // 3. mutate
-    S::mutate(&mut children);
+    S::mutate(&mut children, &mut rng);
     for child in children.iter_mut() {
         child.reevaluate();
     }
@@ -77,29 +75,13 @@ fn next_gen<S: Specimen>(mut species: Vec<S>, nparents: usize, nchildren: usize)
     }
 }
 
-fn partition<S: Specimen>(species: &mut Vec<S>, nparents: usize) -> Vec<Vec<S>> {
-    let mut families = vec![];
-    let mut family = vec![];
-    let mut j = 0;
-    let mut rng = RNG.lock().unwrap();
-    for _ in 0..species.len() {
+fn make_family<S: Specimen>(species: &mut Vec<S>, nparents: usize, family: &mut Vec<S>, rng: &mut XorShiftRng) {
+    assert!(family.is_empty());
+    for _ in 0..nparents {
         let next = rng.gen_range(0, species.len());
         let s = species.swap_remove(next);
         family.push(s);
-    
-        j += 1;
-        if j == nparents {
-            j = 0;
-            families.push(family);
-            family = vec![];
-        }
     }
-
-    if !family.is_empty() {
-        families.push(family);
-    }
-
-    families
 }
 
 
@@ -130,7 +112,7 @@ fn partition<S: Specimen>(species: &mut Vec<S>, nparents: usize) -> Vec<Vec<S>> 
 //const POPULATION: usize = 4;
 //const MAX_ITERS: usize = 1000;
 //const NPARENTS: usize = 2;
-//const NCHILDREN: usize = 140;
+//const NCHILDREN: usize = 280;
 
 // BEST FOR SIZE=30
 //const KILL_PARENTS: bool = true;
@@ -139,23 +121,16 @@ fn partition<S: Specimen>(species: &mut Vec<S>, nparents: usize) -> Vec<Vec<S>> 
 //const POPULATION: usize = 4;
 //const MAX_ITERS: usize = 5000;
 //const NPARENTS: usize = 2;
-//const NCHILDREN: usize = 240;
+//const NCHILDREN: usize = 480;
 
 // BEST FOR SIZE=50
-//const KILL_PARENTS: bool = true;
-//const SIZE: usize = 50;
-//const MUTATION_PROBABILITY: f32 = 1.0f32;
-//const POPULATION: usize = 5;
-//const MAX_ITERS: usize = 5000;
-//const NPARENTS: usize = 2;
-//const NCHILDREN: usize = 320;
 const KILL_PARENTS: bool = true;
 const SIZE: usize = 50;
 const MUTATION_PROBABILITY: f32 = 1.0f32;
 const POPULATION: usize = 5;
 const MAX_ITERS: usize = 5000;
 const NPARENTS: usize = 2;
-const NCHILDREN: usize = 320;
+const NCHILDREN: usize = 500;
 
 //const KILL_PARENTS: bool = true;
 //const SIZE: usize = 100;
@@ -163,7 +138,7 @@ const NCHILDREN: usize = 320;
 //const POPULATION: usize = 5;
 //const MAX_ITERS: usize = 5000;
 //const NPARENTS: usize = 2;
-//const NCHILDREN: usize = 320;
+//const NCHILDREN: usize = 1200;
 
 
 
@@ -249,24 +224,22 @@ impl Specimen for Board {
     }
     
     #[inline(never)]
-    fn mutate(new_gen: &mut [Self]) {
-        let mut rng = RNG.lock().unwrap();
+    fn mutate(new_gen: &mut [Self], rng: &mut XorShiftRng) {
         for board in new_gen.iter_mut() {
             if rng.next_f32() < MUTATION_PROBABILITY {
-                board.do_mutate(&mut rng);
+                board.do_mutate(rng);
             }
         }
     }
     
     #[inline(never)]
-    fn procrastinate(parents: &[Self]) -> Self {
+    fn procrastinate(parents: &[Self], rng: &mut XorShiftRng) -> Self {
         let nqueens = parents.len() * SIZE;
         
         let mut child = Board::new(SIZE, Vec::with_capacity(SIZE));
         
         let mut all_queens = (0..nqueens).collect::<Vec<_>>();
     
-        let mut rng = RNG.lock().unwrap();
         loop {
             let next = rng.gen_range(0, all_queens.len());
             let mut queen = all_queens.swap_remove(next);
@@ -343,6 +316,8 @@ fn genetic_queens() {
 
 
 fn main() {
-    genetic_queens()
+    for _ in 0..10 {
+        genetic_queens()
+    }
 }
 
