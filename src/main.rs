@@ -125,12 +125,12 @@ fn make_family<S: Specimen>(species: &mut Vec<S>, nparents: usize, family: &mut 
 
 // BEST FOR SIZE=50
 const KILL_PARENTS: bool = true;
-const SIZE: usize = 50;
+const SIZE: usize = 400;
 const MUTATION_PROBABILITY: f32 = 1.0f32;
 const POPULATION: usize = 5;
 const MAX_ITERS: usize = 5000;
 const NPARENTS: usize = 2;
-const NCHILDREN: usize = 500;
+const NCHILDREN: usize = 640;
 
 //const KILL_PARENTS: bool = true;
 //const SIZE: usize = 100;
@@ -149,74 +149,81 @@ lazy_static! {
 
 struct Board {
     score: f32,
-    queens: Vec<(usize, usize)>,
-    cells: Vec<bool>
+    queens: Vec<usize>,
 }
 
 impl Board {
-    fn new(n: usize, queens: Vec<(usize, usize)>) -> Board {
-        let mut cells = vec![false; n*n];
-        for &(ref x, ref y) in queens.iter() {
-            cells[n*y + x] = true;
-        }
-        
-        Board { score: 0f32, queens: queens, cells: cells }
-    }
-    
-    fn at(&mut self, x: usize, y: usize) -> &mut bool {
-        &mut self.cells[SIZE * y + x]
+    fn new(queens: Vec<usize>) -> Board {
+        Board { score: 0f32, queens: queens }
     }
     
     #[inline(never)]
     fn do_mutate(&mut self, rng: &mut XorShiftRng) {
-        let q = rng.gen_range(0, SIZE);
-        loop {
-            let x = rng.gen_range(0, SIZE);
-            let y = rng.gen_range(0, SIZE);
-            if !*self.at(x, y) {
-                let (oldx, oldy) = self.queens[q].clone();
-                *self.at(oldx, oldy) = false;
-                *self.at(x, y) = true;
-                self.queens[q] = (x, y);
-                break;
-            }
-        }
-    }
-    
-    fn eval_conflicts(&self, q1: usize, conflicts: &mut [usize]) {
-        let &(ref x1, ref y1) = &self.queens[q1];
+        let x = rng.gen_range(0, SIZE);
         
-        for q2 in q1+1..SIZE {
-            let &(ref x2, ref y2) = &self.queens[q2];
-            if Self::conflict(*x1, *y1, *x2, *y2) {
-                conflicts[q1] += 1;
-                conflicts[q2] += 1;
-            }
+        let mut y = rng.gen_range(0, SIZE-1);
+        if y >= self.queens[x] {
+            y += 1;
         }
-    }
-    
-    fn conflict(x1: usize, y1: usize, x2: usize, y2: usize) -> bool {
-        x1 == x2
-            || y1 == y2
-            || x1.wrapping_sub(x2) == y1.wrapping_sub(y2)
-            || x1.wrapping_sub(x2) == y2.wrapping_sub(y1)
+        self.queens[x] = y;
     }
 }
 
 impl Specimen for Board {
     #[inline(never)]
     fn reevaluate(&mut self) {
-        let mut score: usize = 0;
-        let mut conflicts = vec![0; SIZE];
-        for i in 0 .. SIZE {
-            self.eval_conflicts(i, &mut conflicts);
-            
-            if conflicts[i] == 0 {
-                score += 1;
+        let mut occurences = vec![0; 2*SIZE-1];
+        let mut nonconflicting = Vec::with_capacity(SIZE);
+        
+        // columns
+        for x in 0..SIZE {
+            occurences[self.queens[x]] += 1;
+        }
+        for x in 0..SIZE {
+            if occurences[self.queens[x]] == 1 {
+                nonconflicting.push(x);
             }
         }
         
-        self.score = score as f32 + 0.000001;
+        // forward diagonals
+        for y in 0..SIZE {
+            occurences[y] = 0;
+        }
+        for x in 0..SIZE {
+            let d = SIZE-1 + x - self.queens[x];
+            occurences[d] += 1;
+        }
+        let mut i = 0;
+        while i < nonconflicting.len() {
+            let x = nonconflicting[i];
+            let d = SIZE-1 + x - self.queens[x];
+            if occurences[d] == 1 {
+                i += 1;
+            } else {
+                nonconflicting.swap_remove(i);
+            }
+        }
+    
+        // backward diagonals
+        for y in 0..2*SIZE-1 {
+            occurences[y] = 0;
+        }
+        for x in 0..SIZE {
+            let d = x + self.queens[x];
+            occurences[d] += 1;
+        }
+        i = 0;
+        while i < nonconflicting.len() {
+            let x = nonconflicting[i];
+            let d = x + self.queens[x];
+            if occurences[d] == 1 {
+                i += 1;
+            } else {
+                nonconflicting.swap_remove(i);
+            }
+        }
+    
+        self.score = nonconflicting.len() as f32 + 0.000001;
     }
     
     fn score(&self) -> f32 {
@@ -234,26 +241,11 @@ impl Specimen for Board {
     
     #[inline(never)]
     fn procrastinate(parents: &[Self], rng: &mut XorShiftRng) -> Self {
-        let nqueens = parents.len() * SIZE;
+        let mut child = Board::new(Vec::with_capacity(SIZE));
         
-        let mut child = Board::new(SIZE, Vec::with_capacity(SIZE));
-        
-        let mut all_queens = (0..nqueens).collect::<Vec<_>>();
-    
-        loop {
-            let next = rng.gen_range(0, all_queens.len());
-            let mut queen = all_queens.swap_remove(next);
-            let parent = queen / SIZE;
-            queen %= SIZE;
-    
-            let (x, y) = parents[parent].queens[queen].clone();
-            if !*child.at(x, y) {
-                child.queens.push((x, y));
-                *child.at(x, y) = true;
-                if child.queens.len() == SIZE {
-                    break;
-                }
-            }
+        for x in 0..SIZE {
+            let parent = rng.gen_range(0, parents.len());
+            child.queens.push(parents[parent].queens[x]);
         }
         
         child
@@ -275,18 +267,11 @@ impl Specimen for Board {
     
         let mut rng = RNG.lock().unwrap();
         for _ in 0..POPULATION {
-            let mut board = Board::new(SIZE, vec![]);
+            let mut board = Board::new(Vec::with_capacity(SIZE));
     
-            loop {
-                let x = rng.gen_range(0, SIZE);
+            for _ in 0..SIZE {
                 let y = rng.gen_range(0, SIZE);
-                if !*board.at(x, y) {
-                    board.queens.push((x, y));
-                    *board.at(x, y) = true;
-                    if board.queens.len() == SIZE {
-                        break;
-                    }
-                }
+                board.queens.push(y);
             }
     
             board.reevaluate();
