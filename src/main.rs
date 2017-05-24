@@ -132,22 +132,22 @@ fn make_family<S: Specimen>(species: &mut Vec<S>, nparents: usize, family: &mut 
 //const NPARENTS: usize = 2;
 //const NCHILDREN: usize = 640;
 
+//// BEST FOR SIZE=1000
+//const KILL_PARENTS: bool = true;
+//const SIZE: usize = 1000;
+//const MUTATION_PROBABILITY: f32 = 1.0f32;
+//const POPULATION: usize = 20;
+//const MAX_ITERS: usize = 5000;
+//const NPARENTS: usize = 2;
+//const NCHILDREN: usize = 4000;
+
 const KILL_PARENTS: bool = true;
 const SIZE: usize = 1000;
 const MUTATION_PROBABILITY: f32 = 1.0f32;
-const POPULATION: usize = 15;
+const POPULATION: usize = 20;
 const MAX_ITERS: usize = 5000;
 const NPARENTS: usize = 2;
 const NCHILDREN: usize = 4000;
-
-
-//const KILL_PARENTS: bool = true;
-//const SIZE: usize = 100;
-//const MUTATION_PROBABILITY: f32 = 1.0f32;
-//const POPULATION: usize = 5;
-//const MAX_ITERS: usize = 5000;
-//const NPARENTS: usize = 2;
-//const NCHILDREN: usize = 1200;
 
 
 
