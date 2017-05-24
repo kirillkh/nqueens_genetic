@@ -14,7 +14,7 @@ trait Specimen: Sized {
     fn score(&self) -> f32;
     fn reevaluate(&mut self);
     fn mutate(generation: &mut[Self], rng: &mut XorShiftRng);
-    fn procrastinate(parents: &[Self], rng: &mut XorShiftRng) -> Self;
+    fn breed(parents: &[Self], rng: &mut XorShiftRng) -> Self;
     fn filter_strongest(species: &mut Vec<Self>);
     
     fn initial() -> Vec<Self>;
@@ -55,7 +55,7 @@ fn next_gen<S: Specimen>(mut species: Vec<S>, nparents: usize, nchildren: usize)
     let mut family = vec![];
     for _ in 0..nchildren {
         make_family(&mut species, nparents, &mut family, &mut rng);
-        let child = S::procrastinate(&family, &mut rng);
+        let child = S::breed(&family, &mut rng);
         children.push(child);
         species.extend(family.drain(..));
     }
@@ -123,14 +123,23 @@ fn make_family<S: Specimen>(species: &mut Vec<S>, nparents: usize, family: &mut 
 //const NPARENTS: usize = 2;
 //const NCHILDREN: usize = 480;
 
-// BEST FOR SIZE=50
+// BEST FOR SIZE=400
+//const KILL_PARENTS: bool = true;
+//const SIZE: usize = 400;
+//const MUTATION_PROBABILITY: f32 = 1.0f32;
+//const POPULATION: usize = 5;
+//const MAX_ITERS: usize = 5000;
+//const NPARENTS: usize = 2;
+//const NCHILDREN: usize = 640;
+
 const KILL_PARENTS: bool = true;
-const SIZE: usize = 400;
+const SIZE: usize = 1000;
 const MUTATION_PROBABILITY: f32 = 1.0f32;
-const POPULATION: usize = 5;
+const POPULATION: usize = 15;
 const MAX_ITERS: usize = 5000;
 const NPARENTS: usize = 2;
-const NCHILDREN: usize = 640;
+const NCHILDREN: usize = 4000;
+
 
 //const KILL_PARENTS: bool = true;
 //const SIZE: usize = 100;
@@ -240,7 +249,7 @@ impl Specimen for Board {
     }
     
     #[inline(never)]
-    fn procrastinate(parents: &[Self], rng: &mut XorShiftRng) -> Self {
+    fn breed(parents: &[Self], rng: &mut XorShiftRng) -> Self {
         let mut child = Board::new(Vec::with_capacity(SIZE));
         
         for x in 0..SIZE {
