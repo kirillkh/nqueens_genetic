@@ -7,7 +7,6 @@ extern crate lazy_static;
 use rand::{XorShiftRng, Rng, thread_rng, SeedableRng};
 use std::fmt;
 use std::fmt::{Formatter, Debug};
-
 use std::sync::Mutex;
 
 trait Specimen: Sized {
@@ -87,67 +86,24 @@ fn make_family<S: Specimen>(species: &mut Vec<S>, nparents: usize, family: &mut 
 
 //---------------------------------------------------
 
-// BEST FOR SIZE=8
-//const KILL_PARENTS: bool = true;
-//const SIZE: usize = 8;
-//const MUTATION_PROBABILITY: f32 = 1.0f32;
-//const POPULATION: usize = 3;
-//const MAX_ITERS: usize = 1000;
-//const NPARENTS: usize = 2;
-//const NCHILDREN: usize = 100;
+// BEST FOR SIZE=1000
+const KILL_PARENTS: bool = true;
+const SIZE: usize = 1000;
+const MUTATION_PROBABILITY: f32 = 1.0f32;
+const POPULATION: usize = 4;
+const MAX_ITERS: usize = 5000;
+const NPARENTS: usize = 2;
+const NCHILDREN: usize = 100;
 
-// BEST FOR SIZE=12
-//const KILL_PARENTS: bool = true;
-//const SIZE: usize = 12;
-//const MUTATION_PROBABILITY: f32 = 1.0f32;
-//const POPULATION: usize = 3;
-//const MAX_ITERS: usize = 1000;
-//const NPARENTS: usize = 2;
-//const NCHILDREN: usize = 100;
 
-// BEST FOR SIZE=15
+//
 //const KILL_PARENTS: bool = true;
-//const SIZE: usize = 15;
-//const MUTATION_PROBABILITY: f32 = 1.0f32;
-//const POPULATION: usize = 4;
-//const MAX_ITERS: usize = 1000;
-//const NPARENTS: usize = 2;
-//const NCHILDREN: usize = 280;
-
-// BEST FOR SIZE=30
-//const KILL_PARENTS: bool = true;
-//const SIZE: usize = 30;
-//const MUTATION_PROBABILITY: f32 = 1.0f32;
-//const POPULATION: usize = 4;
-//const MAX_ITERS: usize = 5000;
-//const NPARENTS: usize = 2;
-//const NCHILDREN: usize = 480;
-
-// BEST FOR SIZE=400
-//const KILL_PARENTS: bool = true;
-//const SIZE: usize = 400;
-//const MUTATION_PROBABILITY: f32 = 1.0f32;
-//const POPULATION: usize = 5;
-//const MAX_ITERS: usize = 5000;
-//const NPARENTS: usize = 2;
-//const NCHILDREN: usize = 640;
-
-//// BEST FOR SIZE=1000
-//const KILL_PARENTS: bool = true;
-//const SIZE: usize = 1000;
+//const SIZE: usize = 10000;
 //const MUTATION_PROBABILITY: f32 = 1.0f32;
 //const POPULATION: usize = 20;
 //const MAX_ITERS: usize = 5000;
 //const NPARENTS: usize = 2;
-//const NCHILDREN: usize = 4000;
-
-const KILL_PARENTS: bool = true;
-const SIZE: usize = 1000;
-const MUTATION_PROBABILITY: f32 = 1.0f32;
-const POPULATION: usize = 20;
-const MAX_ITERS: usize = 5000;
-const NPARENTS: usize = 2;
-const NCHILDREN: usize = 4000;
+//const NCHILDREN: usize = 1000;
 
 
 
@@ -168,14 +124,67 @@ impl Board {
     
     #[inline(never)]
     fn do_mutate(&mut self, rng: &mut XorShiftRng) {
-        let x = rng.gen_range(0, SIZE);
+        let i = rng.gen_range(0, SIZE);
+        let mut j = rng.gen_range(0, SIZE-1);
         
-        let mut y = rng.gen_range(0, SIZE-1);
-        if y >= self.queens[x] {
-            y += 1;
+        if j >= i {
+            j += 1;
         }
-        self.queens[x] = y;
+        
+        let t = self.queens[i];
+        self.queens[i] = self.queens[j];
+        self.queens[j] = t;
     }
+    
+    
+    // The algorithm is described in "Genetic Algorithm Solution of the TSP Avoiding Special Crossover and Mutation"
+    // http://user.ceng.metu.edu.tr/~ucoluk/research/publications/tspnew.pdf
+    #[inline(never)]
+    fn breed_pmx(parents: &[Self], rng: &mut XorShiftRng) -> Self {
+        // A very important assert! Without it, the program runs twice slower! o_O
+        assert!(parents.len() == NPARENTS);
+        
+        let mut child = Board::new(parents[0].queens.clone());
+    
+        let mut inverse = vec![0; SIZE];
+        for i in 0..SIZE {
+            let y = child.queens[i];
+            inverse[y] = i;
+        }
+        
+        for x in 0..SIZE {
+            let parent = rng.gen_range(0, parents.len());
+            if parent != 0 {
+                let mother_y = child.queens[x];
+                let father_y = parents[parent].queens[x];
+                let father_x = inverse[father_y];
+                child.queens[father_x] = mother_y;
+                child.queens[x] = father_y;
+                inverse[mother_y] = father_x;
+                if NPARENTS > 2 { // Optimization: this is not required when NPARENTS==2
+                    inverse[father_y] = x;
+                }
+            }
+        }
+        
+//        assert!(Self::permutation_valid(&child.queens), "father={:?}, mother={:?}, child={:?}", &parents[0], &parents[1], &child.queens);
+        
+        child
+    }
+    
+//    fn permutation_valid(p: &[usize]) -> bool {
+//        let mut used = vec![0; p.len()];
+//        for &i in p.iter() {
+//            used[i] = 1;
+//        }
+//        for &u in used.iter() {
+//            if u != 1 {
+//                return false;
+//            }
+//        }
+//
+//        true
+//    }
 }
 
 impl Specimen for Board {
@@ -184,32 +193,14 @@ impl Specimen for Board {
         let mut occurences = vec![0; 2*SIZE-1];
         let mut nonconflicting = Vec::with_capacity(SIZE);
         
-        // columns
-        for x in 0..SIZE {
-            occurences[self.queens[x]] += 1;
-        }
-        for x in 0..SIZE {
-            if occurences[self.queens[x]] == 1 {
-                nonconflicting.push(x);
-            }
-        }
-        
-        // forward diagonals
-        for y in 0..SIZE {
-            occurences[y] = 0;
-        }
         for x in 0..SIZE {
             let d = SIZE-1 + x - self.queens[x];
             occurences[d] += 1;
         }
-        let mut i = 0;
-        while i < nonconflicting.len() {
-            let x = nonconflicting[i];
+        for x in 0..SIZE {
             let d = SIZE-1 + x - self.queens[x];
             if occurences[d] == 1 {
-                i += 1;
-            } else {
-                nonconflicting.swap_remove(i);
+                nonconflicting.push(x);
             }
         }
     
@@ -221,18 +212,16 @@ impl Specimen for Board {
             let d = x + self.queens[x];
             occurences[d] += 1;
         }
-        i = 0;
-        while i < nonconflicting.len() {
-            let x = nonconflicting[i];
+        
+        let mut s = 0;
+        for x in nonconflicting {
             let d = x + self.queens[x];
             if occurences[d] == 1 {
-                i += 1;
-            } else {
-                nonconflicting.swap_remove(i);
+                s += 1;
             }
         }
     
-        self.score = nonconflicting.len() as f32 + 0.000001;
+        self.score = s as f32 + 0.000001;
     }
     
     fn score(&self) -> f32 {
@@ -250,14 +239,7 @@ impl Specimen for Board {
     
     #[inline(never)]
     fn breed(parents: &[Self], rng: &mut XorShiftRng) -> Self {
-        let mut child = Board::new(Vec::with_capacity(SIZE));
-        
-        for x in 0..SIZE {
-            let parent = rng.gen_range(0, parents.len());
-            child.queens.push(parents[parent].queens[x]);
-        }
-        
-        child
+        Self::breed_pmx(parents, rng)
     }
     
     #[inline(never)]
@@ -273,13 +255,20 @@ impl Specimen for Board {
     #[inline(never)]
     fn initial() -> Vec<Self> {
         let mut boards = Vec::with_capacity(POPULATION);
+        
+        let mut ys = Vec::with_capacity(SIZE);
     
         let mut rng = RNG.lock().unwrap();
         for _ in 0..POPULATION {
             let mut board = Board::new(Vec::with_capacity(SIZE));
+            
+            for y in 0..SIZE {
+                ys.push(y);
+            }
     
             for _ in 0..SIZE {
-                let y = rng.gen_range(0, SIZE);
+                let z = rng.gen_range(0, ys.len());
+                let y = ys.swap_remove(z);
                 board.queens.push(y);
             }
     
