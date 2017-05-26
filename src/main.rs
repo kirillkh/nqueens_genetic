@@ -87,13 +87,21 @@ fn make_family<S: Specimen>(species: &mut Vec<S>, nparents: usize, family: &mut 
 //---------------------------------------------------
 
 // BEST FOR SIZE=1000
+//const KILL_PARENTS: bool = true;
+//const SIZE: usize = 1000;
+//const MUTATION_PROBABILITY: f32 = 1.0f32;
+//const POPULATION: usize = 2;
+//const MAX_ITERS: usize = 5000;
+//const NPARENTS: usize = 2;
+//const NCHILDREN: usize = 355;
 const KILL_PARENTS: bool = true;
 const SIZE: usize = 1000;
 const MUTATION_PROBABILITY: f32 = 1.0f32;
 const POPULATION: usize = 4;
 const MAX_ITERS: usize = 5000;
 const NPARENTS: usize = 2;
-const NCHILDREN: usize = 100;
+//const NCHILDREN: usize = 250;
+const NCHILDREN: usize = 110;
 
 
 //
@@ -137,6 +145,48 @@ impl Board {
     }
     
     
+//    fn breed_pmx_norng(parents: &[Self], rng: &mut XorShiftRng) -> Self {
+//        let mut child = Board::new(parents[0].queens.clone());
+//
+//        // it turns out this check makes the code run 3x faster, because the compiler is able to generate more efficient code
+//        // alternatively, we could assert!(parents.len() == NPARENTS)
+//        if parents.len() != NPARENTS {
+//            // we need a function to put #[cold] annotation on
+//            #[cold] fn noop() {}
+//            noop();
+//            return child;
+//        }
+//
+//        let mut inverse = vec![0; SIZE];
+//        for i in 0..SIZE {
+//            let y = child.queens[i];
+//            inverse[y] = i;
+//        }
+//
+//        let mut x = rng.gen_range(0, SIZE);
+//        for _ in 0..SIZE/2 {
+//            x += 1;
+//            if x == SIZE {
+//                x = 0;
+//            }
+////            let parent = rng.gen_range(0, parents.len());
+//            let parent = 1;
+//            if parent != 0 {
+//                let mother_y = child.queens[x];
+//                let father_y = parents[parent].queens[x];
+//                let father_x = inverse[father_y];
+//                child.queens[father_x] = mother_y;
+//                child.queens[x] = father_y;
+//                inverse[mother_y] = father_x;
+//                if NPARENTS > 2 { // Optimization: this is not required when NPARENTS==2
+//                    inverse[father_y] = x;
+//                }
+//            }
+//        }
+//
+//        child
+//    }
+    
     // The algorithm is described in "Genetic Algorithm Solution of the TSP Avoiding Special Crossover and Mutation"
     // http://user.ceng.metu.edu.tr/~ucoluk/research/publications/tspnew.pdf
     #[inline(never)]
@@ -145,29 +195,29 @@ impl Board {
         assert!(parents.len() == NPARENTS);
         
         let mut child = Board::new(parents[0].queens.clone());
-    
-        let mut inverse = vec![0; SIZE];
-        for i in 0..SIZE {
-            let y = child.queens[i];
-            inverse[y] = i;
-        }
+        {
+            let mut inverse = vec![0; SIZE];
+            let cq = &mut child.queens;
+            for i in 0..SIZE {
+                let y = cq[i];
+                inverse[y] = i;
+            }
         
-        for x in 0..SIZE {
-            let parent = rng.gen_range(0, parents.len());
-            if parent != 0 {
-                let mother_y = child.queens[x];
-                let father_y = parents[parent].queens[x];
-                let father_x = inverse[father_y];
-                child.queens[father_x] = mother_y;
-                child.queens[x] = father_y;
-                inverse[mother_y] = father_x;
-                if NPARENTS > 2 { // Optimization: this is not required when NPARENTS==2
-                    inverse[father_y] = x;
+            for x in 0..SIZE {
+                let parent = rng.gen_range(0, parents.len());
+                if parent == 1 {
+                    let mother_y = cq[x];
+                    let father_y = parents[parent].queens[x];
+                    let father_x = inverse[father_y];
+                    cq[father_x] = mother_y;
+                    cq[x] = father_y;
+                    inverse[mother_y] = father_x;
+                    if NPARENTS > 2 { // Optimization: this is not required when NPARENTS==2
+                        inverse[father_y] = x;
+                    }
                 }
             }
         }
-        
-//        assert!(Self::permutation_valid(&child.queens), "father={:?}, mother={:?}, child={:?}", &parents[0], &parents[1], &child.queens);
         
         child
     }
@@ -240,6 +290,7 @@ impl Specimen for Board {
     #[inline(never)]
     fn breed(parents: &[Self], rng: &mut XorShiftRng) -> Self {
         Self::breed_pmx(parents, rng)
+//        Self::breed_pmx_norng(parents, rng)
     }
     
     #[inline(never)]
