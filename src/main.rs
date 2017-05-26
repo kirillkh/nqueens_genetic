@@ -87,22 +87,25 @@ fn make_family<S: Specimen>(species: &mut Vec<S>, nparents: usize, family: &mut 
 //---------------------------------------------------
 
 // BEST FOR SIZE=1000
-//const KILL_PARENTS: bool = true;
+//const ELITE: usize = 3;
+//const NCHILDREN: usize = 65;
+//const KILL_PARENTS: bool = false;
 //const SIZE: usize = 1000;
 //const MUTATION_PROBABILITY: f32 = 1.0f32;
-//const POPULATION: usize = 2;
 //const MAX_ITERS: usize = 5000;
 //const NPARENTS: usize = 2;
-//const NCHILDREN: usize = 355;
-const KILL_PARENTS: bool = true;
+
+
+//const ELITE: usize = 4;
+//const NCHILDREN: usize = 130;
+//const KILL_PARENTS: bool = true;
+const ELITE: usize = 3;
+const NCHILDREN: usize = 65;
+const KILL_PARENTS: bool = false;
 const SIZE: usize = 1000;
 const MUTATION_PROBABILITY: f32 = 1.0f32;
-//const ELITE: usize = 4;
-const ELITE: usize = 5;
 const MAX_ITERS: usize = 5000;
 const NPARENTS: usize = 2;
-//const NCHILDREN: usize = 130;
-const NCHILDREN: usize = 230;
 
 
 //
