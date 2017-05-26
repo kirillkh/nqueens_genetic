@@ -10,7 +10,7 @@ use std::fmt::{Formatter, Debug};
 use std::sync::Mutex;
 
 trait Specimen: Sized {
-    fn score(&self) -> f32;
+    fn fitness(&self) -> f32;
     fn reevaluate(&mut self);
     fn mutate(generation: &mut[Self], rng: &mut XorShiftRng);
     fn breed(parents: &[Self], rng: &mut XorShiftRng) -> Self;
@@ -22,18 +22,18 @@ trait Specimen: Sized {
 
 fn genetic<S: Specimen>(threshold: f32, max_iters: usize, nparents: usize, nchildren: usize) -> S {
     let mut species: Vec<S> = S::initial();
-    let mut best = (0f32, 0);
+    let mut best = (::std::f32::MAX, 0);
     for _ in 0..max_iters {
         species = next_gen(species, nparents, nchildren);
         
         for (i, specimen) in species.iter().enumerate() {
-            let score = specimen.score();
-            if best.0 <= score {
-                best = (score, i)
+            let fitness = specimen.fitness();
+            if fitness <= best.0 {
+                best = (fitness, i)
             }
         }
         
-        if best.0 >= threshold {
+        if best.0 <= threshold {
             println!("found!");
             break;
         }
@@ -97,11 +97,12 @@ fn make_family<S: Specimen>(species: &mut Vec<S>, nparents: usize, family: &mut 
 const KILL_PARENTS: bool = true;
 const SIZE: usize = 1000;
 const MUTATION_PROBABILITY: f32 = 1.0f32;
-const ELITE: usize = 4;
+//const ELITE: usize = 4;
+const ELITE: usize = 5;
 const MAX_ITERS: usize = 5000;
 const NPARENTS: usize = 2;
-const NCHILDREN: usize = 250;
-//const NCHILDREN: usize = 110;
+//const NCHILDREN: usize = 130;
+const NCHILDREN: usize = 230;
 
 
 //
@@ -121,13 +122,13 @@ lazy_static! {
 
 
 struct Board {
-    score: f32,
+    fitness: f32,
     queens: Vec<usize>,
 }
 
 impl Board {
     fn new(queens: Vec<usize>) -> Board {
-        Board { score: 0f32, queens: queens }
+        Board { fitness: ::std::f32::MAX, queens: queens }
     }
     
     #[inline(never)]
@@ -245,21 +246,19 @@ impl Specimen for Board {
             diag_counts1[d1] += 1;
             diag_counts2[d2] += 1;
         }
-        
-        let mut s = 0;
+
+        let mut f = 0;
         for x in 0..SIZE {
             let d1 = SIZE-1 + x - q[x];
             let d2 = x + q[x];
-            if diag_counts1[d1] == 1 && diag_counts2[d2] == 1 {
-                s += 1;
-            }
+            f += diag_counts1[d1] + diag_counts2[d2];
         }
     
-        self.score = s as f32 + 0.000001;
+        self.fitness = f as f32;
     }
     
-    fn score(&self) -> f32 {
-        self.score
+    fn fitness(&self) -> f32 {
+        self.fitness
     }
     
     #[inline(never)]
@@ -283,7 +282,7 @@ impl Specimen for Board {
             return;
         }
         
-        species.sort_by(|s, t| t.score.partial_cmp(&s.score).unwrap());
+        species.sort_by(|s, t| s.fitness.partial_cmp(&t.fitness).unwrap());
         species.truncate(ELITE);
     }
     
@@ -316,7 +315,7 @@ impl Specimen for Board {
 
 impl Debug for Board {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "score={}, queens=[{:?}]", self.score, self.queens)
+        write!(f, "fitness={}, queens=[{:?}]", self.fitness, self.queens)
     }
 }
 
@@ -328,7 +327,7 @@ fn genetic_queens() {
         rng.reseed([trng.next_u32(), trng.next_u32(), trng.next_u32(), trng.next_u32()]);
     }
     
-    let best = genetic::<Board>(SIZE as f32, MAX_ITERS, NPARENTS, NCHILDREN);
+    let best = genetic::<Board>((2*SIZE) as f32 + 0.01, MAX_ITERS, NPARENTS, NCHILDREN);
     println!("best: {:?}", &best);
 }
 
