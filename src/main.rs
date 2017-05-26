@@ -97,11 +97,11 @@ fn make_family<S: Specimen>(species: &mut Vec<S>, nparents: usize, family: &mut 
 const KILL_PARENTS: bool = true;
 const SIZE: usize = 1000;
 const MUTATION_PROBABILITY: f32 = 1.0f32;
-const POPULATION: usize = 4;
+const ELITE: usize = 4;
 const MAX_ITERS: usize = 5000;
 const NPARENTS: usize = 2;
-//const NCHILDREN: usize = 250;
-const NCHILDREN: usize = 110;
+const NCHILDREN: usize = 250;
+//const NCHILDREN: usize = 110;
 
 
 //
@@ -145,47 +145,43 @@ impl Board {
     }
     
     
-//    fn breed_pmx_norng(parents: &[Self], rng: &mut XorShiftRng) -> Self {
-//        let mut child = Board::new(parents[0].queens.clone());
-//
-//        // it turns out this check makes the code run 3x faster, because the compiler is able to generate more efficient code
-//        // alternatively, we could assert!(parents.len() == NPARENTS)
-//        if parents.len() != NPARENTS {
-//            // we need a function to put #[cold] annotation on
-//            #[cold] fn noop() {}
-//            noop();
-//            return child;
-//        }
-//
-//        let mut inverse = vec![0; SIZE];
-//        for i in 0..SIZE {
-//            let y = child.queens[i];
-//            inverse[y] = i;
-//        }
-//
-//        let mut x = rng.gen_range(0, SIZE);
-//        for _ in 0..SIZE/2 {
-//            x += 1;
-//            if x == SIZE {
-//                x = 0;
-//            }
-////            let parent = rng.gen_range(0, parents.len());
-//            let parent = 1;
-//            if parent != 0 {
-//                let mother_y = child.queens[x];
-//                let father_y = parents[parent].queens[x];
-//                let father_x = inverse[father_y];
-//                child.queens[father_x] = mother_y;
-//                child.queens[x] = father_y;
-//                inverse[mother_y] = father_x;
-//                if NPARENTS > 2 { // Optimization: this is not required when NPARENTS==2
-//                    inverse[father_y] = x;
-//                }
-//            }
-//        }
-//
-//        child
-//    }
+    fn breed_pmx_norng(parents: &[Self], rng: &mut XorShiftRng) -> Self {
+        let mut child = Board::new(parents[0].queens.clone());
+    
+        // A very important assert! Without it, the program runs twice slower! o_O
+        assert!(parents.len() == NPARENTS);
+    
+        {
+            let cq: &mut [usize] = &mut child.queens;
+            let mut inverse = vec![0; SIZE];
+            for i in 0..SIZE {
+                let y = cq[i];
+                inverse[y] = i;
+            }
+        
+            let mut x = rng.gen_range(0, SIZE);
+            for _ in 0..SIZE/2 {
+                x += 1;
+                if x == SIZE {
+                    x = 0;
+                }
+                
+                let parent = 1;
+                let mother_y = cq[x];
+                let father_y = parents[parent].queens[x];
+                let father_x = inverse[father_y];
+                cq[father_x] = mother_y;
+                cq[x] = father_y;
+                inverse[mother_y] = father_x;
+                if NPARENTS > 2 {
+                    // Optimization: this is not required when NPARENTS==2
+                    inverse[father_y] = x;
+                }
+            }
+        }
+
+        child
+    }
     
     // The algorithm is described in "Genetic Algorithm Solution of the TSP Avoiding Special Crossover and Mutation"
     // http://user.ceng.metu.edu.tr/~ucoluk/research/publications/tspnew.pdf
@@ -240,33 +236,21 @@ impl Board {
 impl Specimen for Board {
     #[inline(never)]
     fn reevaluate(&mut self) {
-        let mut occurences = vec![0; 2*SIZE-1];
-        let mut nonconflicting = Vec::with_capacity(SIZE);
-        
+        let q: &[usize] = &self.queens;
+        let mut diag_counts = vec![0; 4*SIZE-2];
+        let (diag_counts1, diag_counts2) = diag_counts.split_at_mut(2*SIZE-1);
         for x in 0..SIZE {
-            let d = SIZE-1 + x - self.queens[x];
-            occurences[d] += 1;
-        }
-        for x in 0..SIZE {
-            let d = SIZE-1 + x - self.queens[x];
-            if occurences[d] == 1 {
-                nonconflicting.push(x);
-            }
-        }
-    
-        // backward diagonals
-        for y in 0..2*SIZE-1 {
-            occurences[y] = 0;
-        }
-        for x in 0..SIZE {
-            let d = x + self.queens[x];
-            occurences[d] += 1;
+            let d1 = SIZE-1 + x - q[x];
+            let d2 = x + q[x];
+            diag_counts1[d1] += 1;
+            diag_counts2[d2] += 1;
         }
         
         let mut s = 0;
-        for x in nonconflicting {
-            let d = x + self.queens[x];
-            if occurences[d] == 1 {
+        for x in 0..SIZE {
+            let d1 = SIZE-1 + x - q[x];
+            let d2 = x + q[x];
+            if diag_counts1[d1] == 1 && diag_counts2[d2] == 1 {
                 s += 1;
             }
         }
@@ -289,28 +273,28 @@ impl Specimen for Board {
     
     #[inline(never)]
     fn breed(parents: &[Self], rng: &mut XorShiftRng) -> Self {
-        Self::breed_pmx(parents, rng)
-//        Self::breed_pmx_norng(parents, rng)
+//        Self::breed_pmx(parents, rng)
+        Self::breed_pmx_norng(parents, rng)
     }
     
     #[inline(never)]
     fn filter_strongest(species: &mut Vec<Self>) {
-        if species.len() <= POPULATION {
+        if species.len() <= ELITE {
             return;
         }
         
         species.sort_by(|s, t| t.score.partial_cmp(&s.score).unwrap());
-        species.truncate(POPULATION);
+        species.truncate(ELITE);
     }
     
     #[inline(never)]
     fn initial() -> Vec<Self> {
-        let mut boards = Vec::with_capacity(POPULATION);
+        let mut boards = Vec::with_capacity(NCHILDREN);
         
         let mut ys = Vec::with_capacity(SIZE);
     
         let mut rng = RNG.lock().unwrap();
-        for _ in 0..POPULATION {
+        for _ in 0..NCHILDREN {
             let mut board = Board::new(Vec::with_capacity(SIZE));
             
             for y in 0..SIZE {
