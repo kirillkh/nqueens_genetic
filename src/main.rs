@@ -9,9 +9,15 @@ use std::fmt;
 use std::fmt::{Formatter, Debug};
 use std::sync::Mutex;
 
+trait Fitness: Ord {
+    fn max() -> Self;
+}
+
 trait Specimen: Sized {
-    fn fitness(&self) -> f32;
-    fn reevaluate(&mut self);
+    type F: Fitness;
+    
+    fn fitness(&self) -> Self::F;
+    fn reevaluate(&mut self, rng: &mut XorShiftRng);
     fn mutate(generation: &mut[Self], rng: &mut XorShiftRng);
     fn breed(parents: &[Self], rng: &mut XorShiftRng) -> Self;
     fn filter_strongest(species: &mut Vec<Self>);
@@ -20,9 +26,9 @@ trait Specimen: Sized {
 }
 
 
-fn genetic<S: Specimen>(threshold: f32, max_iters: usize, nparents: usize, nchildren: usize) -> S {
+fn genetic<S: Specimen>(threshold: S::F, max_iters: usize, nparents: usize, nchildren: usize) -> S {
     let mut species: Vec<S> = S::initial();
-    let mut best = (::std::f32::MAX, 0);
+    let mut best = (S::F::max(), 0);
     for _ in 0..max_iters {
         species = next_gen(species, nparents, nchildren);
         
@@ -62,7 +68,7 @@ fn next_gen<S: Specimen>(mut species: Vec<S>, nparents: usize, nchildren: usize)
     // 3. mutate
     S::mutate(&mut children, &mut rng);
     for child in children.iter_mut() {
-        child.reevaluate();
+        child.reevaluate(&mut rng);
     }
     
     
@@ -99,12 +105,13 @@ fn make_family<S: Specimen>(species: &mut Vec<S>, nparents: usize, family: &mut 
 //const ELITE: usize = 4;
 //const NCHILDREN: usize = 130;
 //const KILL_PARENTS: bool = true;
-const ELITE: usize = 3;
-const NCHILDREN: usize = 65;
+const ELITE: usize = 2;
+//const NCHILDREN: usize = 65;
+const NCHILDREN: usize = 2;
 const KILL_PARENTS: bool = false;
-const SIZE: usize = 1000;
-const MUTATION_PROBABILITY: f32 = 1.0f32;
-const MAX_ITERS: usize = 5000;
+const SIZE: usize = 100000;
+const MUTATION_PROBABILITY: f32 = 0.01f32;
+const MAX_ITERS: usize = 50000;
 const NPARENTS: usize = 2;
 
 
@@ -125,13 +132,13 @@ lazy_static! {
 
 
 struct Board {
-    fitness: f32,
+    fitness: usize,
     queens: Vec<usize>,
 }
 
 impl Board {
     fn new(queens: Vec<usize>) -> Board {
-        Board { fitness: ::std::f32::MAX, queens: queens }
+        Board { fitness: ::std::usize::MAX, queens: queens }
     }
     
     #[inline(never)]
@@ -143,9 +150,7 @@ impl Board {
             j += 1;
         }
         
-        let t = self.queens[i];
-        self.queens[i] = self.queens[j];
-        self.queens[j] = t;
+        self.queens.swap(i, j);
     }
     
     
@@ -237,10 +242,19 @@ impl Board {
 //    }
 }
 
+
+impl Fitness for usize {
+    fn max() -> Self {
+        ::std::usize::MAX
+    }
+}
+
 impl Specimen for Board {
+    type F = usize;
+    
     #[inline(never)]
-    fn reevaluate(&mut self) {
-        let q: &[usize] = &self.queens;
+    fn reevaluate(&mut self, rng: &mut XorShiftRng) {
+        let q: &mut [usize] = &mut self.queens;
         let mut diag_counts = vec![0; 4*SIZE-2];
         let (diag_counts1, diag_counts2) = diag_counts.split_at_mut(2*SIZE-1);
         for x in 0..SIZE {
@@ -257,10 +271,95 @@ impl Specimen for Board {
             f += diag_counts1[d1] + diag_counts2[d2];
         }
     
-        self.fitness = f as f32;
+        self.fitness = f;
+    
+    
+        // perform a conflict minimization step
+        let i = rng.gen_range(0, SIZE);
+        let qi = q[i];
+        let di1o = SIZE-1 + i - q[i];
+        let di2o = i + q[i];
+        let ci_old = diag_counts1[di1o] + diag_counts2[di2o];
+        let mut max_deltaf = 0;
+        let mut max_deltaf_j = 0;
+        for j in 0..SIZE {
+            if i == j {
+                continue;
+            }
+    
+            let qj = q[j];
+            
+            let dj1o = SIZE-1 + j - qj;
+            let dj2o = j + qj;
+            let di1n = SIZE-1 + j - qi;
+            let di2n = j + qi;
+            let dj1n = SIZE-1 + i - qj;
+            let dj2n = i + qj;
+            
+            let fold;
+            let fnew;
+            if di1o == dj1o {
+                assert!(di2n == dj2n);
+                let c1o = (diag_counts1[di1o]-1)*4; // neg
+                let c2n = (diag_counts2[di2n]+1)*4;
+    
+                let c2o = diag_counts2[di2o] + diag_counts2[dj2o];
+                let c1n = diag_counts1[di1n] + diag_counts1[dj1n];
+                
+                fold = c1o + (c2o - 1)*2;
+                fnew = c2n + (c1n + 1)*2;
+            } else if di2o == dj2o {
+                assert!(di1n == dj1n);
+                let c2o = (diag_counts2[di2o]-1)*4; // neg
+                let c1n = (diag_counts1[di1n]+1)*4;
+    
+                let c1o = diag_counts1[di1o] + diag_counts1[dj1o]; // neg
+                let c2n = diag_counts2[di2n] + diag_counts2[dj2n];
+                
+                fold = c2o + (c1o - 1)*2;
+                fnew = c1n + (c2n + 1)*2;
+            } else {
+                let cj_old = diag_counts1[dj1o] + diag_counts2[dj2o];
+                let ci_new = diag_counts1[di1n] + diag_counts2[di2n] + 2;
+                let cj_new = diag_counts1[dj1n] + diag_counts2[dj2n] + 2;
+    
+                fold = (ci_old + cj_old)*2;
+                fnew = (ci_new + cj_new)*2;
+            }
+    
+            if fold > max_deltaf + fnew {
+                max_deltaf = fold - fnew;
+                max_deltaf_j = j;
+            }
+        }
+        
+        if max_deltaf != 0 {
+//            println!("queens_o={:?}, fitness_o={}, case={}", q, self.fitness, case);
+            q.swap(i, max_deltaf_j);
+            self.fitness -= max_deltaf;
+            
+//            // TEST DEBUG
+//            let mut diag_counts = vec![0; 4*SIZE-2];
+//            let (diag_counts1, diag_counts2) = diag_counts.split_at_mut(2*SIZE-1);
+//            for x in 0..SIZE {
+//                let d1 = SIZE-1 + x - q[x];
+//                let d2 = x + q[x];
+//                diag_counts1[d1] += 1;
+//                diag_counts2[d2] += 1;
+//            }
+//
+//            let mut f = 0;
+//            for x in 0..SIZE {
+//                let d1 = SIZE-1 + x - q[x];
+//                let d2 = x + q[x];
+//                f += diag_counts1[d1] + diag_counts2[d2];
+//            }
+//
+//            assert!(f == self.fitness, "max_deltaf={}, f={}, fitness={}, queens={:?}", max_deltaf, f, self.fitness, q);
+        }
     }
     
-    fn fitness(&self) -> f32 {
+    fn fitness(&self) -> usize {
         self.fitness
     }
     
@@ -309,7 +408,7 @@ impl Specimen for Board {
                 board.queens.push(y);
             }
     
-            board.reevaluate();
+            board.reevaluate(&mut rng);
             boards.push(board);
         }
         boards
@@ -330,8 +429,9 @@ fn genetic_queens() {
         rng.reseed([trng.next_u32(), trng.next_u32(), trng.next_u32(), trng.next_u32()]);
     }
     
-    let best = genetic::<Board>((2*SIZE) as f32 + 0.01, MAX_ITERS, NPARENTS, NCHILDREN);
-    println!("best: {:?}", &best);
+    let best = genetic::<Board>(2*SIZE, MAX_ITERS, NPARENTS, NCHILDREN);
+//    println!("best: {:?}", &best);
+    println!("best: {:?}", best.fitness());
 }
 
 
