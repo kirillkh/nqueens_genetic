@@ -8,6 +8,7 @@ use rand::{XorShiftRng, Rng, thread_rng, SeedableRng};
 use std::fmt;
 use std::fmt::{Formatter, Debug};
 use std::sync::Mutex;
+use std::cmp;
 
 trait Fitness: Ord {
     fn max() -> Self;
@@ -107,7 +108,7 @@ fn make_family<S: Specimen>(species: &mut Vec<S>, nparents: usize, family: &mut 
 //const KILL_PARENTS: bool = true;
 const ELITE: usize = 2;
 //const NCHILDREN: usize = 65;
-const NCHILDREN: usize = 2;
+const NCHILDREN: usize = 1;
 const KILL_PARENTS: bool = false;
 const SIZE: usize = 100000;
 const MUTATION_PROBABILITY: f32 = 0.01f32;
@@ -277,9 +278,9 @@ impl Specimen for Board {
         // perform a conflict minimization step
         let i = rng.gen_range(0, SIZE);
         let qi = q[i];
-        let di1o = SIZE-1 + i - q[i];
-        let di2o = i + q[i];
-        let ci_old = diag_counts1[di1o] + diag_counts2[di2o];
+        let (di1o, di2o) = (SIZE-1 + i - qi, i + qi);
+        let (ci1o, ci2o) = (diag_counts1[di1o], diag_counts2[di2o]);
+        let ci_old = ci1o + ci2o;
         let mut max_deltaf = 0;
         let mut max_deltaf_j = 0;
         for j in 0..SIZE {
@@ -289,39 +290,45 @@ impl Specimen for Board {
     
             let qj = q[j];
             
-            let dj1o = SIZE-1 + j - qj;
-            let dj2o = j + qj;
-            let di1n = SIZE-1 + j - qi;
-            let di2n = j + qi;
-            let dj1n = SIZE-1 + i - qj;
-            let dj2n = i + qj;
+            let (dj1o, dj2o) = (SIZE-1 + j - qj, j + qj);
+            let (cj1o, cj2o) = (diag_counts1[dj1o], diag_counts2[dj2o]);
+            let cj_old = cj1o + cj2o;
+            
+            if ci_old==2 && cj_old==2 {
+                continue;
+            }
+            
+            let (di1n, di2n) = (SIZE-1 + j - qi, j + qi);
+            let (ci1n, ci2n) = (diag_counts1[di1n], diag_counts2[di2n]);
+            
+            let (dj1n, dj2n) = (SIZE-1 + i - qj, i + qj);
+            let (cj1n, cj2n) = (diag_counts1[dj1n], diag_counts2[dj2n]);
             
             let fold;
             let fnew;
             if di1o == dj1o {
                 assert!(di2n == dj2n);
-                let c1o = (diag_counts1[di1o]-1)*4; // neg
-                let c2n = (diag_counts2[di2n]+1)*4;
+                let c1o = (ci1o-1)*4; // neg
+                let c2n = (ci2n+1)*4;
     
-                let c2o = diag_counts2[di2o] + diag_counts2[dj2o];
-                let c1n = diag_counts1[di1n] + diag_counts1[dj1n];
+                let c2o = ci2o + cj2o;
+                let c1n = ci1n + cj1n;
                 
                 fold = c1o + (c2o - 1)*2;
                 fnew = c2n + (c1n + 1)*2;
             } else if di2o == dj2o {
                 assert!(di1n == dj1n);
-                let c2o = (diag_counts2[di2o]-1)*4; // neg
-                let c1n = (diag_counts1[di1n]+1)*4;
+                let c2o = (ci2o-1)*4; // neg
+                let c1n = (ci1n+1)*4;
     
-                let c1o = diag_counts1[di1o] + diag_counts1[dj1o]; // neg
-                let c2n = diag_counts2[di2n] + diag_counts2[dj2n];
+                let c1o = ci1o + cj1o; // neg
+                let c2n = ci2n + cj2n;
                 
                 fold = c2o + (c1o - 1)*2;
                 fnew = c1n + (c2n + 1)*2;
             } else {
-                let cj_old = diag_counts1[dj1o] + diag_counts2[dj2o];
-                let ci_new = diag_counts1[di1n] + diag_counts2[di2n] + 2;
-                let cj_new = diag_counts1[dj1n] + diag_counts2[dj2n] + 2;
+                let ci_new = ci1n + ci2n + 2;
+                let cj_new = cj1n + cj2n + 2;
     
                 fold = (ci_old + cj_old)*2;
                 fnew = (ci_new + cj_new)*2;
@@ -390,12 +397,13 @@ impl Specimen for Board {
     
     #[inline(never)]
     fn initial() -> Vec<Self> {
-        let mut boards = Vec::with_capacity(NCHILDREN);
+        let population = cmp::max(NCHILDREN, NPARENTS);
+        let mut boards = Vec::with_capacity(population);
         
         let mut ys = Vec::with_capacity(SIZE);
     
         let mut rng = RNG.lock().unwrap();
-        for _ in 0..NCHILDREN {
+        for _ in 0..population {
             let mut board = Board::new(Vec::with_capacity(SIZE));
             
             for y in 0..SIZE {
